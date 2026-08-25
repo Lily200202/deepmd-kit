@@ -91,6 +91,9 @@ pair_coeff * * O H
 pair_style deepmd cp.pb fparam_from_compute TEMP
 compute    TEMP all temp
 
+# for example, use f_cp[13] from fix uvt as the frame parameter
+pair_style deepmd cp_0.pb cp_1.pb fparam_from_fix cp 13 out_file md.out out_freq 10
+
 pair_style deepmd ener.pb aparam_from_compute 1
 compute    1 all ke/atom
 
@@ -117,7 +120,7 @@ $$E_{v_i}=\frac{\left|D_{v_i}\right|}{\left|v_i\right|+l}$$
 
 If the keyword `fparam` is set, the given frame parameter(s) will be fed to the model.
 If the keyword `fparam_from_compute` is set, the global parameter(s) from compute command (e.g., temperature from [compute temp command](https://docs.lammps.org/compute_temp.html)) will be fed to the model as the frame parameter(s).
-If the keyword `fparam_from_fix` is set, the global parameter(s) from fix command will be fed to the model as the frame parameter(s). This is intended for generalized coordinates that are naturally carried by a fix, for example the potentiostat variable in `fix uvt`. See [compute `deepmd/fparam/dedn`](#compute-deepmdfparamdedn) for evaluating the corresponding energy derivative.
+If the keyword `fparam_from_fix` is set, the global parameter(s) from fix command will be fed to the model as the frame parameter(s), including multi-model model-deviation calculations. This is intended for generalized coordinates that are naturally carried by a fix, for example the potentiostat variable in `fix uvt`. See [compute `deepmd/fparam/dedn`](#compute-deepmdfparamdedn) for evaluating the corresponding energy derivative.
 If the keyword `aparam_from_compute` is set, the atomic parameter(s) from compute command (e.g., per-atom translational kinetic energy from [compute ke/atom command](https://docs.lammps.org/compute_ke_atom.html)) will be fed to the model as the atom parameter(s).
 If the keyword `aparam` is set, the given atomic parameter(s) will be fed to the model, where each atom is assumed to have the same atomic parameter(s).
 If the keyword `charge_spin` is set, the given per-frame charge/spin value(s) will be fed to models that were trained with a charge/spin embedding (e.g. DPA-3 with `add_chg_spin_ebd`). If the keyword is not set, the model's stored `default_chg_spin` (if any) is used.
@@ -220,9 +223,11 @@ compute ID group-ID deepmd/fparam/dedn source [delta]
 - `delta` is the perturbation used in the central difference formula. If omitted, a small default perturbation is used.
 - The compute performs two additional model-energy evaluations, at `source + delta`
   and `source - delta`. It does not consume a direct derivative tensor from the model.
-- This path currently requires `pair_style deepmd` with one model and one frame-parameter
-  dimension. It therefore works with existing supported backends and models that accept
-  a scalar frame parameter; no `o_dE_dN` or other derivative output is required.
+- This path currently requires `pair_style deepmd` with one frame-parameter dimension.
+  For multi-model `pair_style deepmd`, the finite-difference derivative is evaluated
+  with the first model, matching the model used to provide energy and forces during MD.
+  It therefore works with existing supported backends and models that accept a scalar
+  frame parameter; no `o_dE_dN` or other derivative output is required.
 
 ## Compute tensorial properties
 

@@ -23,6 +23,7 @@ pbtxt_file = (
 )
 pb_file = Path(__file__).parent / "fparam_aparam.pb"
 data_file = Path(__file__).parent / "data.lmp"
+model_devi_file = Path(__file__).parent / "model_devi_fparam_from_fix.out"
 
 box = np.array([0, 13, 0, 13, 0, 13, 0, 0, 0])
 coord = np.array(
@@ -50,6 +51,8 @@ def teardown_module() -> None:
     """Remove the temporary LAMMPS data file after the tests finish."""
     if data_file.exists():
         os.remove(data_file)
+    if model_devi_file.exists():
+        os.remove(model_devi_file)
 
 
 def _lammps(fp_value, units="metal") -> PyLammps:
@@ -132,3 +135,46 @@ def test_compute_deepmd_fparam_dedn_without_direct_model_output(lammps) -> None:
         2.0 * eps
     )
     assert dedn == pytest.approx(ref, rel=1.0e-4, abs=1.0e-4)
+
+
+def test_model_devi_and_dedn_with_fparam_from_fix() -> None:
+    """Check model-deviation and dE/dfparam with fix-sourced fparam."""
+    if model_devi_file.exists():
+        os.remove(model_devi_file)
+
+    lmp = PyLammps()
+    try:
+        lmp.units("metal")
+        lmp.boundary("p p p")
+        lmp.atom_style("atomic")
+        lmp.neighbor("2.0 bin")
+        lmp.neigh_modify("every 10 delay 0 check no")
+        lmp.read_data(data_file.resolve())
+        lmp.mass("1 16")
+        lmp.timestep(0.0005)
+        lmp.fix("1 all nve")
+        lmp.variable("fp equal 0.25852028")
+        lmp.variable("dummy equal 0.0")
+        lmp.fix("fpfix all ave/time 1 1 1 v_dummy v_fp")
+        lmp.pair_style(
+            f"deepmd {pb_file.resolve()} {pb_file.resolve()} "
+            f"fparam_from_fix fpfix 2 aparam 0.25852028 "
+            f"out_file {model_devi_file.resolve()} out_freq 1 atomic"
+        )
+        lmp.pair_coeff("* *")
+        lmp.compute("dedn all deepmd/fparam/dedn f_fpfix[2]")
+        lmp.run(1)
+
+        dedn = lmp.eval("c_dedn")
+        ref = (
+            _energy_at_fp(0.25852028 + 1.0e-6)
+            - _energy_at_fp(0.25852028 - 1.0e-6)
+        ) / 2.0e-6
+        assert dedn == pytest.approx(ref, rel=1.0e-4, abs=1.0e-4)
+        model_devi = np.atleast_2d(np.loadtxt(model_devi_file.resolve()))
+        assert model_devi.shape[1] == 13
+        assert model_devi[:, 1:] == pytest.approx(
+            np.zeros((model_devi.shape[0], 12)), abs=1.0e-12
+        )
+    finally:
+        lmp.close()

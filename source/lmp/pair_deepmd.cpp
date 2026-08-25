@@ -132,11 +132,6 @@ PairDeepMD::~PairDeepMD() {
 
 double PairDeepMD::eval_energy_with_fparam(
     const std::vector<double>& fparam_override) {
-  if (numb_models != 1) {
-    error->all(FLERR,
-               "deepmd/fparam/dedn currently supports single-model pair_style "
-               "only");
-  }
   if (atom->sp_flag) {
     error->all(FLERR,
                "Pair style 'deepmd' does not support spin atoms, please use "
@@ -224,8 +219,18 @@ double PairDeepMD::eval_energy_with_fparam(
     }
 
     try {
-      deep_pot.compute(dener, dforce, dvirial, dcoord, dtype, dbox, nghost,
-                       lmp_list, ago, fparam_override, daparam);
+      if (numb_models == 1) {
+        deep_pot.compute(dener, dforce, dvirial, dcoord, dtype, dbox, nghost,
+                         lmp_list, ago, fparam_override, daparam);
+      } else {
+        std::vector<decltype(dener)> all_energy;
+        std::vector<std::vector<double>> all_force;
+        std::vector<std::vector<double>> all_virial;
+        deep_pot_model_devi.compute(all_energy, all_force, all_virial, dcoord,
+                                    dtype, dbox, nghost, lmp_list, ago,
+                                    fparam_override, daparam, charge_spin);
+        dener = all_energy[0];
+      }
     } catch (deepmd_compat::deepmd_exception& e) {
       error->one(FLERR, e.what());
     }
